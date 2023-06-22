@@ -67,8 +67,10 @@ def visualize_sample(image, pred_mask, mask, i):
     tensor = torch.from_numpy(vis_stack.transpose(2, 0, 1))
     return(tensor)
 
+model_path = "./saved_model"
 NUM_EPOCHS = int(input("How many epochs do you want to run for (Recommended number is 750): "))
 IMG_DISPLAY_FREQ = 100
+min_loss = 0.5
 for epoch in range(NUM_EPOCHS):
     #Training loop
     for i, (real_i, image, mask) in enumerate(dataloader):      
@@ -108,7 +110,7 @@ for epoch in range(NUM_EPOCHS):
         pred_mask = autoencoder(image)
 
         #Crop image appropriately
-        image = torchvision.transforms.functional.crop(image,     top=20, left=20, height=512-40, width=640-40)
+        image = torchvision.transforms.functional.crop(image,     top=21, left=20, height=512-40, width=640-40)
         pred_mask = torchvision.transforms.functional.crop(pred_mask, top=20, left=20, height=512-40, width=640-40)
         mask = torchvision.transforms.functional.crop(mask,      top=20, left=20, height=512-40, width=640-40)
         weight = (mask * 10) + 1
@@ -121,8 +123,15 @@ for epoch in range(NUM_EPOCHS):
         #Switch to next when loss goes below 0.05
         if(i == curr_display):
             writer.add_image('Test ' + str(epoch), visualize_sample(image[0], pred_mask[0], mask[0], real_i[0]), dataformats='CHW')
-            if(loss < 0.05):
+            if(loss < 0.5):
                  curr_display = (curr_display + 1) % len(validation_set)
+                 
     #Write average loss of items in validation set to logs
     writer.add_scalar('Loss/Average Validation', total_loss/len(validateloader), epoch)
+    if(total_loss/len(validateloader) < min_loss):
+         torch.save(autoencoder.state_dict(), model_path)
+         min_loss = total_loss/len(validateloader)
 writer.close()
+
+
+torch.save(autoencoder.state_dict(), model_path)
