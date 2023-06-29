@@ -17,13 +17,17 @@ import PIL
 from PIL import Image
 
 def add_hoop_to_background(background_image, hoop_image):
-    size = random.randint(100,min(background_image.size[1], background_image.size[0])//2)
-    maxsize = (size, size)
-    hoop_image.thumbnail(maxsize, PIL.Image.ANTIALIAS)
+    max_hoop_size = (background_image.size[0] - 1, background_image.size[1] - 1)
+    hoop_image.thumbnail(max_hoop_size, PIL.Image.ANTIALIAS)
 
+    val = min(background_image.size[1], background_image.size[0])//2
+    size = random.randint(min(100, val),max(100, val))
+    maxsize = (min(size, hoop_image.size[1]), min(size, hoop_image.size[1]))
+    hoop_image.thumbnail(maxsize, PIL.Image.ANTIALIAS)
+    
     #Paste hoop onto background
-    x_center = random.randint(hoop_image.size[0], background_image.size[0] - hoop_image.size[0])
-    y_center = random.randint(hoop_image.size[1], background_image.size[1] - hoop_image.size[1])
+    x_center = random.randint(0, background_image.size[0] - hoop_image.size[0])
+    y_center = random.randint(0, background_image.size[1] - hoop_image.size[1])
     #im.paste(mouse, (40,40), mouse)
     background_image.paste(hoop_image, (x_center, y_center), hoop_image)
 
@@ -33,7 +37,6 @@ def add_hoop_to_background(background_image, hoop_image):
     black_image.paste(hoop_image, (x_center, y_center))
     black_image = black_image.crop((0, 0, background_image.size[0], background_image.size[1]))
     return background_image, black_image
-
 
 def transform_image(orig_img):
     transformed_img = orig_img
@@ -71,6 +74,7 @@ class HoopDataset(Dataset):
         self.hoop_dir = hoop_dir
         self.hoops = sorted(os.listdir(hoop_dir))
         self.backgrounds = sorted(os.listdir(background_dir))
+        self.backgrounds.remove(".DS_Store")
         self.num_backgrounds = len(self.backgrounds)
         self.transform = transform
         self.cache = {} # TODO cache to disk instead of RAM
@@ -90,7 +94,7 @@ class HoopDataset(Dataset):
         #Get base background
         background = Image.open(self.background_dir + "/" + self.backgrounds[back_idx])
         hoop_back, hoop_black = add_hoop_to_background(background, hoop)
-
+        
         tf=transforms.Compose([
             transforms.ToTensor(),
             transforms.Resize((512,640)),
