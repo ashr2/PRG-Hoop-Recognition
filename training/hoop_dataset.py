@@ -4,6 +4,7 @@ import numpy as np
 import random
 import os
 import sys
+from joblib import Memory
 #Pytorch modules
 import torch
 from torch import nn
@@ -34,7 +35,7 @@ def add_hoop_to_background(background_image, hoop_image):
     #Paste hoop onto black background
     black_image = Image.new("L", background_image.size)
     hoop_mask = hoop_image.convert("L")
-    black_image.paste(hoop_image, (x_center, y_center))
+    black_image.paste(hoop_mask, (x_center, y_center))
     black_image = black_image.crop((0, 0, background_image.size[0], background_image.size[1]))
     return background_image, black_image
 
@@ -61,52 +62,66 @@ def transform_image(orig_img):
     transformed_img = perspective_imgs[0]
     
     return(transformed_img)
+cache_dir = "/media/tanujthakkar/EVIMO2_v1"
+
+memory = Memory(cache_dir, verbose=0)
 
 class HoopDataset(Dataset): 
 
-    def __init__(self, hoop_dir, background_dir, transform=None):
+    def __init__(self, hoop_dir, background_dir, preset = False, transform=None):
         """
         Args:
             hoop_dir (string): Path to directory with all hoops
             background_dir (string): Path to directory with all backgrounds
         """
+        self.preset = preset
         self.background_dir = background_dir
         self.hoop_dir = hoop_dir
         self.hoops = sorted(os.listdir(hoop_dir))
+        if(".DS_Store") in self.hoops:
+            self.hoops.remove(".DS_Store")
         self.backgrounds = sorted(os.listdir(background_dir))
-        self.backgrounds.remove(".DS_Store")
+        if(".DS_Store" in self.backgrounds):
+            self.backgrounds.remove(".DS_Store")
         self.num_backgrounds = len(self.backgrounds)
         self.transform = transform
-        self.cache = {} # TODO cache to disk instead of RAM
+        self.cached_getitem = memory.cache(self._getitem)
 
     def __len__(self):
-        return self.num_backgrounds * len(self.hoops)
+        return(self.num_backgrounds * len(self.hoops))
 
-    def __getitem__(self, idx):
-        if idx in self.cache:
-            return self.cache[idx]
 
-        #Get base hoop
+    def _getitem(self, idx):
         hoop_idx = idx % len(self.hoops)
         back_idx = int(idx / len(self.hoops)) % self.num_backgrounds
+        if self.preset == False:
+            hoop = Image.open(self.hoop_dir + "/" + self.hoops[hoop_idx])
+            background = Image.open(self.background_dir + "/" + self.backgrounds[back_idx])
+            hoop_back, hoop_black = add_hoop_to_background(background, hoop)
+            
+            tf=transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((512,640)),
+            ])
+            hoop_back  = tf(hoop_back)
+            hoop_black = tf(hoop_black)
+            hoop_black = (hoop_black > 0).type(torch.float)
 
-        hoop = Image.open(self.hoop_dir + "/" + self.hoops[hoop_idx])
-        #Get base background
-        background = Image.open(self.background_dir + "/" + self.backgrounds[back_idx])
-        hoop_back, hoop_black = add_hoop_to_background(background, hoop)
-        
-        tf=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Resize((512,640)),
-        ])
+            data = (hoop_back, hoop_black)
 
-        hoop_back  = tf(hoop_back)
-        hoop_black = tf(hoop_black)
-        hoop_black = (hoop_black > 0).type(torch.float)
+            return idx, *data
+        else:
+            image = Image.open(self.background_dir + "/" + "background" + str(hoop_idx) + ".png")
+            image = image.convert('RGB')
+            mask = Image.open(self.hoop_dir + "/" + "mask" + str(hoop_idx) + ".png")
+            tf = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((512, 640))
+            ])
+            mask = tf(mask)
+            mask = (mask > 0).type(torch.float)
+            data = (tf(image), mask)
+            return idx, *data
 
-        data = (hoop_back, hoop_black)
-        if self.transform is not None:
-           data = [self.transform(item) for item in data]
-        self.cache[idx] = (idx, *data)
-
-        return idx, *data
+    def __getitem__(self, idx):
+        return self.cached_getitem(idx)

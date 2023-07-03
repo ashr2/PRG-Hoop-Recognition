@@ -1,2 +1,5 @@
-assets/training_data/
+assets/*.MOV
 training/logs
+training/old_logs
+training/completed_logs
+training/saved_model
