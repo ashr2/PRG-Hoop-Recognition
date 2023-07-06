@@ -12,10 +12,14 @@ from torch import optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 from torchvision import datasets, transforms, models
+from torchvision.transforms import ToTensor, ToPILImage
 from torch.utils.data import Dataset, DataLoader
 #Image modules
 import PIL
 from PIL import Image
+import PIL.PngImagePlugin
+import time
+
 
 def add_hoop_to_background(background_image, hoop_image):
     max_hoop_size = (background_image.size[0] - 1, background_image.size[1] - 1)
@@ -86,19 +90,63 @@ class HoopDataset(Dataset):
         self.num_backgrounds = len(self.backgrounds)
         self.transform = transform
         self.cached_getitem = memory.cache(self._getitem)
+        #Image.init()
+        #Image.register_extensions("png", extensions=PIL.PngImagePlugin)
 
     def __len__(self):
-        return(self.num_backgrounds * len(self.hoops))
-
+        if(self.preset == True):
+            return(self.num_backgrounds)
+        else:
+            return(self.num_backgrounds * len(self.hoop_dir))
 
     def _getitem(self, idx):
         hoop_idx = idx % len(self.hoops)
         back_idx = int(idx / len(self.hoops)) % self.num_backgrounds
         if self.preset == False:
-            hoop = Image.open(self.hoop_dir + "/" + self.hoops[hoop_idx])
+            total_start = time.perf_counter()
+            start_time = time.perf_counter()
+            hoop = PIL.Image.open(self.hoop_dir + "/" + self.hoops[hoop_idx], formats=['PNG'])
+            #hoop.show()
+            hoop_size = hoop.size
             background = Image.open(self.background_dir + "/" + self.backgrounds[back_idx])
-            hoop_back, hoop_black = add_hoop_to_background(background, hoop)
+            end_time = time.perf_counter()
+            image_opening_time = end_time - start_time
             
+            start_time = time.perf_counter()
+            hoop_rgb, hoop_a = hoop.split()[0:3], hoop.split()[3]
+            transform = transforms.ColorJitter(brightness=0.6, contrast=0.6, saturation=0.6, hue=0.3)
+            transformed_rgb = transform(Image.merge('RGB', hoop_rgb))
+            hoop = Image.merge('RGBA', (*transformed_rgb.split(), hoop_a))
+            end_time = time.perf_counter()
+            alpha_time = end_time - start_time
+            
+
+            tf = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.RandomPerspective(distortion_scale=0.8, p=0.7),
+                transforms.RandomVerticalFlip(p=0.5),
+                transforms.RandomHorizontalFlip(p=0.5)
+            ])
+
+            to_pil_image = ToPILImage()
+
+            start_time = time.perf_counter()
+            hoop = tf(hoop)
+            end_time = time.perf_counter()
+            tran_time = end_time - start_time
+
+            start_time = time.perf_counter()
+            hoop = to_pil_image(hoop)
+            end_time = time.perf_counter()
+            to_pil_time = end_time - start_time
+            
+
+            start_time = time.perf_counter()
+            hoop_back, hoop_black = add_hoop_to_background(background, hoop)
+            end_time = time.perf_counter()
+            pasting_time = end_time - start_time
+
+            start_time = time.perf_counter()
             tf=transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Resize((512,640)),
@@ -106,11 +154,24 @@ class HoopDataset(Dataset):
             hoop_back  = tf(hoop_back)
             hoop_black = tf(hoop_black)
             hoop_black = (hoop_black > 0).type(torch.float)
+            end_time = time.perf_counter()
+            black_time = end_time - start_time
 
+            total_end = time.perf_counter()
+            print(" Total Time: " + str(total_end- total_start), " Alpha Time: " + str(alpha_time) + " Transform time: " + str(tran_time + to_pil_time))
+            # print("Total Time: " + str(total_end - total_start))
+            max_time = max(alpha_time, tran_time + to_pil_time, pasting_time) 
+            if(max_time == alpha_time):
+                print("Alpha")
+            elif(max_time == tran_time + to_pil_time):
+                print("Transform")
+            elif(max_time == pasting_time):
+                print("Pasting")
             data = (hoop_back, hoop_black)
 
             return idx, *data
         else:
+
             image = Image.open(self.background_dir + "/" + "background" + str(hoop_idx) + ".png")
             image = image.convert('RGB')
             mask = Image.open(self.hoop_dir + "/" + "mask" + str(hoop_idx) + ".png")
@@ -125,3 +186,4 @@ class HoopDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.cached_getitem(idx)
+

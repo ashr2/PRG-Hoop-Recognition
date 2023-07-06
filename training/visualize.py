@@ -158,6 +158,7 @@
 
 # torch.save(autoencoder.state_dict(), model_path)
 import random
+import time
 import os
 import numpy as np
 import sys
@@ -177,6 +178,7 @@ import tensorflow as tf
 from torch.utils.tensorboard import SummaryWriter
 from PIL import Image
 from test_video import test
+from numba import jit
 #Initialize writer
 log_dir = "/media/tanujthakkar/EVIMO2_v1/logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 writer = SummaryWriter(log_dir=log_dir)
@@ -229,38 +231,52 @@ def visualize_sample(image, pred_mask, mask, i):
 
 model_path = "./saved_model"
 NUM_EPOCHS = int(input("How many epochs do you want to run for (Recommended number is 750): "))
+
 IMG_DISPLAY_FREQ = 1000
-min_loss = 0.1
+min_loss = 0.10
+
 dataloader_length = len(dataloader)
+
 for epoch in range(NUM_EPOCHS):
     #Training loop
+    main_start = time.perf_counter()
+    is_first = True
     for i, (real_i, image, mask) in enumerate(dataloader):    
-        try:  
+        try:
             #Clear gradients and obtain predicted mask of current image
+            start_time = time.perf_counter()
             image = image.to(device)
             mask = mask.to(device)
             optimizer.zero_grad()
             pred_mask = autoencoder(image)
-
+            end_time = time.perf_counter()
+            masking_time = end_time - start_time
             #Crop image appropriately
-            image = torchvision.transforms.functional.crop(image,     top=20, left=20, height=512-40, width=640-40)
-            pred_mask = torchvision.transforms.functional.crop(pred_mask, top=20, left=20, height=512-40, width=640-40)
-            mask = torchvision.transforms.functional.crop(mask,      top=20, left=20, height=512-40, width=640-40)
+            start_time = time.perf_counter()
+            crop_transform = lambda im : torchvision.transforms.functional.crop(im, top=20, left=20, height=512-40, width=640-40)
+            image = crop_transform(image)
+            pred_mask = crop_transform(pred_mask)
+            mask = crop_transform(mask)
             weight = (mask * 10) + 1
-            
+            end_time = time.perf_counter()
+            cropping_time = end_time - start_time
             #Compute binary cross entropy loss between prediction and target, perform backpropogation,
             #and update model parameters appropriately.
+            start_time = time.perf_counter()
             loss = F.binary_cross_entropy(pred_mask, mask, weight=weight)
             loss.backward()
             optimizer.step()
-
+            end_time = time.perf_counter()
+            update_time = end_time - start_time
             #Display images in interval determined by variable IMG_DISPLAY_FREQ
             # if((epoch * len(dataloader) + i) % IMG_DISPLAY_FREQ == 0):
                     #writer.add_image('Sample ' + str(epoch*len(dataloader) + i), visualize_sample(image[0], pred_mask[0], mask[0], real_i[0]), dataformats='CHW')
                     
             #Write binary cross entropy loss between prediction and target to logs
+            #writer.add_image('Test Training ' + str(i), visualize_sample(image[0], pred_mask[0], mask[0], real_i[0]), dataformats='CHW')
             writer.add_scalar('Loss/train', loss.item(), epoch * dataloader_length + i)
-            print((epoch, dataloader_length, i,  epoch * dataloader_length + i))
+            main_end = time.perf_counter()
+            #print((epoch, dataloader_length, i,  "Masking time: " + str(masking_time), "Cropping Time: " + str(cropping_time), "Update Time: " + str(update_time), "Total: " + str(main_end - main_start)))
         except:
              print("Error")
 
@@ -288,8 +304,8 @@ for epoch in range(NUM_EPOCHS):
 
             #Display the first image in the validation set until its loss is below 0.1.
             #Switch to next when loss goes below 0.05
-            # if(i % max(1,((epoch % 3) * 100)) == 0):
-            #     writer.add_image('Test ' + str(epoch) + ' ' + str(i), visualize_sample(image[0], pred_mask[0], mask[0], real_i[0]), dataformats='CHW')
+            if(i % 10000 == 0):
+                writer.add_image('Validation ' + str(epoch) + ' ' + str(i), visualize_sample(image[0], pred_mask[0], mask[0], real_i[0]), dataformats='CHW')
 
             validate_len += 1
         except:

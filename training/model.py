@@ -28,7 +28,7 @@ transform = transforms.Compose([
 ])
 
 # Specify the path to your video file
-video_path = "/home/tanujthakkar/ash/PRG-Hoop-Recognition/assets/IMG_8609.MOV"
+video_path = "/home/tanujthakkar/ash/PRG-Hoop-Recognition/assets/IMG_8621.MOV"
 
 # Open the video file
 cap = cv2.VideoCapture(video_path)
@@ -49,7 +49,7 @@ while cap.isOpened():
         pred_mask = autoencoder(image_tensor)
 
         # Convert the tensors back to numpy arrays
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pred_mask = pred_mask.squeeze().detach().cpu().numpy()
 
         # Optional step: Threshold the mask

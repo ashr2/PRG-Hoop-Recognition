@@ -18,4 +18,6 @@ def convert_image(input_image_path, output_image_path):
     img.putdata(new_image)
     img.save(output_image_path)
 
-convert_image("/Users/ashwathrajesh/PRG-Hoop-Recognition/PRG-Hoop-Recognition/assets/masks/mask3.jpeg", "output.jpg")
+i = 3
+base = "/home/tanujthakkar/ash/PRG-Hoop-Recognition/assets/hoops/hoop8.png"
+convert_image(base, "output.jpg")
