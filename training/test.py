@@ -28,8 +28,8 @@ def visualize_sample(image, pred_mask, mask, i):
 
     vis_stack = np.hstack((image_numpy, pred_mask_numpy, mask_numpy))
     vis_stack = cv2.resize(vis_stack, (int(vis_stack.shape[1]/2), int(vis_stack.shape[0]/2)))
-
-    cv2.imshow('sample ' + str(i), vis_stack)
+    if(i % 10 == 0):
+        cv2.imshow('sample ' + str(i), vis_stack)
     cv2.waitKey(1)
 
 device = 'cpu'
@@ -39,7 +39,7 @@ if torch.cuda.is_available():
     pin_memory = True
 
 # Create dataset
-dataset = hoop_dataset.HoopDataset("../tests/hoops", "../assets")
+dataset = hoop_dataset.HoopDataset("../assets/hoops", "../assets/training_data")
 
 # Set batch size
 batch_size = 1
