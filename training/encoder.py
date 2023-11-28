@@ -1,41 +1,77 @@
 import torch
-import torchvision
-import torchvision.transforms as transforms
-import hoop_dataset
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+
+class encoder_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv = conv_block(in_channels, out_channels)
+        self.pool = nn.MaxPool2d((2, 2))
+    def forward(self, inputs):
+        x = self.conv(inputs)
+        p = self.pool(x)
+        return x, p
+    
+class conv_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU()
+    def forward(self, inputs):
+        x = self.conv1(inputs)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu(x)
+        return x
+    
+class encoder_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv = conv_block(in_channels, out_channels)
+        self.pool = nn.MaxPool2d((2, 2))
+    def forward(self, inputs):
+        x = self.conv(inputs)
+        p = self.pool(x)
+        return x, p
+    
+class decoder_block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2, padding=0)
+        self.conv = conv_block(out_channels+out_channels, out_channels)
+    def forward(self, inputs, skip):
+        x = self.up(inputs)
+        x = torch.cat([x, skip], axis=1)
+        x = self.conv(x)
+        return x
+    
 class AutoEncoder(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-
-        # Original 
-        self.encoder_conv2d_1 = nn.Conv2d(in_channels=in_channels, out_channels=16, 
-                      kernel_size=(16, 16), stride=2)
-        self.encoder_conv2d_2 = nn.Conv2d(in_channels=16, out_channels=32, 
-                      kernel_size=(8, 8), stride=2)
-        # self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=1, padding=1, return_indices=True)
-        # self.unpool = nn.MaxUnpool2d(kernel_size=(2, 2), stride=1, padding=1)
-        self.decoder_conv2d_1 = nn.ConvTranspose2d(in_channels=32, out_channels=16, 
-                               kernel_size=(8, 8), stride=2)
-        self.decoder_conv2d_2 = nn.ConvTranspose2d(in_channels=16, out_channels=out_channels,
-                               kernel_size=(16, 16), stride=2)
-
-        # torch.nn.init.normal_(self.encoder_conv2d_1.weight)
-        # torch.nn.init.normal_(self.encoder_conv2d_2.weight)
-        # torch.nn.init.normal_(self.decoder_conv2d_1.weight)
-        # torch.nn.init.normal_(self.decoder_conv2d_2.weight)
-
-    def forward(self, x):
-        # Original
-        encoded_conv2d_1 = self.encoder_conv2d_1(x)
-        encoded_conv2d_2 = self.encoder_conv2d_2(F.relu(encoded_conv2d_1))
-        # encoded, indices = self.pool(F.relu(encoded_conv2d_2))
-        # decoded_unpool = self.unpool(F.relu(encoded), indices, output_size=encoded_conv2d_2.size())
-        decoded_conv2d_1 = self.decoder_conv2d_1(F.relu(encoded_conv2d_2), output_size=encoded_conv2d_1.size())
-        decoded = self.decoder_conv2d_2(F.relu(decoded_conv2d_1), output_size=x.size())
-
-        # Use sigmoid to keep output between 0 and 1
-        decoded = torch.sigmoid(decoded)
-
-        return decoded
+        self.e1 = encoder_block(3, 64)
+        self.e2 = encoder_block(64, 128)
+        self.e3 = encoder_block(128, 256)
+        self.e4 = encoder_block(256, 512)
+        self.b = conv_block(512, 1024)
+        self.d1 = decoder_block(1024, 512)
+        self.d2 = decoder_block(512, 256)
+        self.d3 = decoder_block(256, 128)
+        self.d4 = decoder_block(128, 64)
+        self.outputs = nn.Conv2d(64, 1, kernel_size=1, padding=0)
+    def forward(self, inputs):
+        s1, p1 = self.e1(inputs)
+        s2, p2 = self.e2(p1)
+        s3, p3 = self.e3(p2)
+        s4, p4 = self.e4(p3)
+        b = self.b(p4)
+        d1 = self.d1(b, s4)
+        d2 = self.d2(d1, s3)
+        d3 = self.d3(d2, s2)
+        d4 = self.d4(d3, s1)
+        outputs = self.outputs(d4)
+        outputs = torch.sigmoid(outputs)
+        return outputs

@@ -119,7 +119,6 @@ class HoopDataset(Dataset):
             transform = transforms.ColorJitter(brightness=0.6, contrast=0.6, saturation=0.6, hue=0.3)
             transformed_rgb = transform(Image.merge('RGB', hoop_rgb))
             hoop = Image.merge('RGBA', (*transformed_rgb.split(), hoop_a))
-
             #Get image of hoop pasted on background and of mask
             hoop_back, hoop_black = add_hoop_to_background(background, hoop, mask)
 
